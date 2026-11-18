@@ -10,7 +10,7 @@ The game is currently in development and is not ready to play yet. A public web 
 
 - Play a complete game of standard chess in your browser
 - Challenge a built-in computer opponent
-- Choose between two board looks: **Classic Matte** and **Remastered Glass**
+- Choose between two board looks: **Classic Matte** and **Reborn Glass**
 - Enjoy a tactile 3D board, clear piece movement, and responsive controls
 - Play without an account or a separate game service
 

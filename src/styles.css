@@ -124,6 +124,18 @@ p {
   font-size: 0.9rem;
 }
 
+.site-credit {
+  margin: 0.75rem 0 0;
+  color: #89939a;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+}
+
+.game-screen > .site-credit {
+  margin-top: clamp(1.5rem, 4vw, 2.5rem);
+  text-align: center;
+}
+
 .game-viewport[hidden],
 .welcome-panel[hidden] {
   display: none;

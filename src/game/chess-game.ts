@@ -69,6 +69,7 @@ export function mountChessGame(container: HTMLElement): void {
           <p class="local-game-note">Pass-and-play on this device. Computer play will be added separately.</p>
         </aside>
       </div>
+      <footer class="site-credit">© 2026 jakariatanjim-svg</footer>
     </main>
   `;
 

@@ -24,4 +24,6 @@ Chess Titan Reborn is designed to run in your browser. It does not require an ac
 
 ## License and credits
 
-The chess engine is powered by [Stockfish](https://stockfishchess.org/), provided under the GNU General Public License version 3.0. Chess rules are provided by [chess.js](https://github.com/jhlywa/chess.js), and the 3D presentation uses [Three.js](https://threejs.org/). Third-party license texts are included in the `licenses` folder.
+Copyright © 2026 jakariatanjim-svg. Except for third-party components, the original Chess Titan Reborn code and project-created assets are licensed under the GNU General Public License v3.0 only. See [COPYRIGHT](COPYRIGHT.md) and [LICENSE](LICENSE). If you redistribute a modified version of this project, the corresponding source and GPL notices must remain available under the same license.
+
+Third-party components keep their own licenses: Stockfish (GPLv3), chess.js (BSD-2-Clause), and Three.js (MIT). Their license texts are in the `licenses` folder; this project's license does not replace or change them.

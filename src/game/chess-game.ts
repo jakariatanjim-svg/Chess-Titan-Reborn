@@ -1,5 +1,5 @@
 import { Chess, type Square } from "chess.js";
-import { ChessBoard3D, type BoardTheme, type PieceColor, type RenderPiece } from "./chess-board-3d";
+import { ChessBoard3D, type BoardTheme, type CapturedPiece, type PieceColor, type RenderPiece } from "./chess-board-3d";
 import { StockfishEngine } from "./stockfish-engine";
 
 export type GameMode = "local" | "computer";
@@ -80,6 +80,7 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
             <div class="game-menu-popover game-help-popover">
               <p>Click one of your pieces, then choose a highlighted square.</p>
               <p>The last move is marked in blue; a checked king's square is red.</p>
+              <p>Captured pieces stay visible in color-coded trays beside the board.</p>
               <p>Right-click and drag to adjust the view. Mouse-wheel zoom is disabled.</p>
               <details class="keyboard-board">
                 <summary>Keyboard board</summary>
@@ -184,6 +185,18 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
     return pieces;
   }
 
+  function boardCapturedPieces(): CapturedPiece[] {
+    const captured: CapturedPiece[] = [];
+    for (const move of chess.history({ verbose: true })) {
+      if (!move.captured) continue;
+      captured.push({
+        type: move.captured,
+        color: move.color === "w" ? "b" : "w",
+      });
+    }
+    return captured;
+  }
+
   function getCheckedKingSquare(): Square | null {
     if (!chess.isCheck()) return null;
     const position = chess.board();
@@ -263,7 +276,10 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
       engineStatus.textContent = "";
     }
 
-    if (positionChanged) boardView.setPosition(boardPieces());
+    if (positionChanged) {
+      boardView.setPosition(boardPieces());
+      boardView.setCapturedPieces(boardCapturedPieces());
+    }
     const legalMoves = selectedSquare
       ? chess.moves({ square: selectedSquare, verbose: true })
       : [];

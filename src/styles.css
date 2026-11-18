@@ -323,6 +323,13 @@ p {
   font-weight: 650;
 }
 
+.engine-status {
+  margin: 0.45rem 0 0;
+  color: #aeb9bc;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
 .moves-heading {
   display: flex;
   align-items: center;

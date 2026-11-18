@@ -2,25 +2,28 @@ import "./styles.css";
 
 type BoardTheme = "classic" | "glass" | "marble";
 
-const app = document.querySelector<HTMLElement>("#app");
-
-if (!app) {
-  throw new Error("The application root is missing.");
+function requireElement<T extends Element>(element: T | null, description: string): T {
+  if (!element) throw new Error(`The ${description} is missing.`);
+  return element;
 }
+
+const app = requireElement(document.querySelector<HTMLElement>("#app"), "application root");
 
 app.innerHTML = `
   <main class="app-shell">
     <section class="welcome-panel" data-welcome aria-labelledby="app-title">
       <div class="menu-copy">
-        <p class="eyebrow">Chess Titan Reborn</p>
+        <p class="eyebrow">Chess Titan Reborn · Early beta</p>
         <h1 id="app-title">A timeless game, remade for the web.</h1>
-        <p class="intro">Take a seat at the table. Play a local game now; computer play is coming soon.</p>
+        <p class="intro">Take a seat at the table. Play pass-and-play or challenge the bundled Stockfish engine, right in your browser.</p>
       </div>
       <nav class="main-menu" aria-label="Main menu">
-        <button class="primary-action menu-action" type="button" data-open-game>Play local game</button>
+        <button class="primary-action menu-action" type="button" data-open-local>Play local game</button>
+        <button class="secondary-action menu-action" type="button" data-open-computer>Play vs computer</button>
         <button class="secondary-action menu-action" type="button" data-open-settings>Settings</button>
         <button class="secondary-action menu-action" type="button" data-open-credits>Credits</button>
       </nav>
+      <p class="menu-note">Early beta — still in development. Board and controls are ready to try; feedback helps shape what comes next.</p>
       <p class="loading-status" data-loading-status aria-live="polite"></p>
       <footer class="site-credit">© 2026 jakariatanjim-svg</footer>
     </section>
@@ -37,11 +40,27 @@ app.innerHTML = `
             <option value="marble">Royal Marble</option>
           </select>
         </label>
+        <label class="setting-control" for="player-color">
+          Your side (computer games)
+          <select id="player-color" data-player-color>
+            <option value="w">White</option>
+            <option value="b">Black</option>
+          </select>
+        </label>
+        <label class="setting-control" for="engine-depth">
+          Computer strength
+          <select id="engine-depth" data-engine-depth>
+            <option value="5">Casual</option>
+            <option value="9">Club</option>
+            <option value="13">Strong</option>
+          </select>
+        </label>
         <label class="toggle-control">
           <input type="checkbox" data-keep-free-view />
           <span>Keep the adjusted view after dragging</span>
         </label>
-        <p class="dialog-note">Board finish and view preference are saved on this device. Right-drag rotates the board; with this off, the view returns to the current player's angle. Mouse-wheel zoom is disabled.</p>
+        <p class="dialog-note">Board, view, and computer preferences are saved on this device. Side and strength apply to new computer games launched from the menu.</p>
+        <p class="dialog-note">Right-drag rotates the board; with view retention off, it returns to the current player's angle. Mouse-wheel zoom is disabled.</p>
         <button class="primary-action" type="button" data-close-settings>Done</button>
       </div>
     </dialog>
@@ -52,39 +71,51 @@ app.innerHTML = `
         <p class="credit-line"><strong>Chess Titan Reborn</strong><br>© 2026 jakariatanjim-svg</p>
         <p class="credit-line"><strong>Chess rules</strong><br>chess.js</p>
         <p class="credit-line"><strong>3D graphics</strong><br>Three.js</p>
-        <p class="credit-line"><strong>Computer engine</strong><br>Stockfish 19 Lite files are included; computer play is not connected yet.</p>
+        <p class="credit-line"><strong>Computer engine</strong><br>Bundled Stockfish 19 Lite runs locally in your browser; it does not use a game server.</p>
         <button class="primary-action" type="button" data-close-credits>Close</button>
       </div>
     </dialog>
   </main>
 `;
 
-const welcome = app.querySelector<HTMLElement>("[data-welcome]");
-const openButton = app.querySelector<HTMLButtonElement>("[data-open-game]");
-const status = app.querySelector<HTMLElement>("[data-loading-status]");
-const viewport = app.querySelector<HTMLElement>("[data-game-viewport]");
-const settingsDialog = app.querySelector<HTMLDialogElement>("[data-settings-dialog]");
-const creditsDialog = app.querySelector<HTMLDialogElement>("[data-credits-dialog]");
-const themeSelect = app.querySelector<HTMLSelectElement>("[data-board-theme]");
-const keepFreeViewInput = app.querySelector<HTMLInputElement>("[data-keep-free-view]");
+const welcome = requireElement(app.querySelector<HTMLElement>("[data-welcome]"), "welcome panel");
+const localGameButton = requireElement(app.querySelector<HTMLButtonElement>("[data-open-local]"), "local game button");
+const computerGameButton = requireElement(app.querySelector<HTMLButtonElement>("[data-open-computer]"), "computer game button");
+const status = requireElement(app.querySelector<HTMLElement>("[data-loading-status]"), "loading status");
+const viewport = requireElement(app.querySelector<HTMLElement>("[data-game-viewport]"), "game viewport");
+const settingsDialog = requireElement(app.querySelector<HTMLDialogElement>("[data-settings-dialog]"), "settings dialog");
+const creditsDialog = requireElement(app.querySelector<HTMLDialogElement>("[data-credits-dialog]"), "credits dialog");
+const themeSelect = requireElement(app.querySelector<HTMLSelectElement>("[data-board-theme]"), "board theme selector");
+const playerColorSelect = requireElement(app.querySelector<HTMLSelectElement>("[data-player-color]"), "player color selector");
+const engineDepthSelect = requireElement(app.querySelector<HTMLSelectElement>("[data-engine-depth]"), "engine strength selector");
+const keepFreeViewInput = requireElement(app.querySelector<HTMLInputElement>("[data-keep-free-view]"), "free-view setting");
 
-if (!welcome || !openButton || !status || !viewport || !settingsDialog || !creditsDialog || !themeSelect || !keepFreeViewInput) {
-  throw new Error("The game shell could not be initialized.");
-}
+type GameMode = "local" | "computer";
+type PlayerColor = "w" | "b";
 
 let currentTheme: BoardTheme = "classic";
 let keepFreeView = false;
+let playerColor: PlayerColor = "w";
+let engineDepth = 9;
 let disposeGame: (() => void) | null = null;
 
 try {
   const savedTheme = localStorage.getItem("chess-titan-board-theme");
+  const savedColor = localStorage.getItem("chess-titan-player-color");
+  const savedDepth = localStorage.getItem("chess-titan-engine-depth");
   currentTheme = savedTheme === "glass" || savedTheme === "marble" ? savedTheme : "classic";
   keepFreeView = localStorage.getItem("chess-titan-keep-free-view") === "true";
+  playerColor = savedColor === "b" ? "b" : "w";
+  engineDepth = [5, 9, 13].includes(Number(savedDepth)) ? Number(savedDepth) : 9;
 } catch {
   currentTheme = "classic";
   keepFreeView = false;
+  playerColor = "w";
+  engineDepth = 9;
 }
 themeSelect.value = currentTheme;
+playerColorSelect.value = playerColor;
+engineDepthSelect.value = String(engineDepth);
 keepFreeViewInput.checked = keepFreeView;
 
 const saveTheme = (theme: BoardTheme): void => {
@@ -102,6 +133,25 @@ themeSelect.addEventListener("change", () => {
   saveTheme(selectedTheme === "glass" || selectedTheme === "marble" ? selectedTheme : "classic");
 });
 
+playerColorSelect.addEventListener("change", () => {
+  playerColor = playerColorSelect.value === "b" ? "b" : "w";
+  try {
+    localStorage.setItem("chess-titan-player-color", playerColor);
+  } catch {
+    // Keep the preference for the current session if storage is unavailable.
+  }
+});
+
+engineDepthSelect.addEventListener("change", () => {
+  const selectedDepth = Number(engineDepthSelect.value);
+  engineDepth = [5, 9, 13].includes(selectedDepth) ? selectedDepth : 9;
+  try {
+    localStorage.setItem("chess-titan-engine-depth", String(engineDepth));
+  } catch {
+    // Keep the preference for the current session if storage is unavailable.
+  }
+});
+
 keepFreeViewInput.addEventListener("change", () => {
   keepFreeView = keepFreeViewInput.checked;
   try {
@@ -112,11 +162,40 @@ keepFreeViewInput.addEventListener("change", () => {
   window.dispatchEvent(new CustomEvent<boolean>("chess-free-view-setting-change", { detail: keepFreeView }));
 });
 
+async function launchGame(mode: GameMode): Promise<void> {
+  localGameButton.disabled = true;
+  computerGameButton.disabled = true;
+  status.textContent = mode === "computer" ? "Loading Stockfish…" : "Setting the table…";
+
+  try {
+    const { mountChessGame } = await import("./game/chess-game");
+    disposeGame = mountChessGame(viewport, {
+      initialTheme: currentTheme,
+      keepFreeView,
+      mode,
+      playerColor,
+      engineDepth,
+    });
+    welcome.hidden = true;
+    viewport.hidden = false;
+    status.textContent = "";
+    app.classList.add("is-playing");
+  } catch {
+    status.textContent = "The game could not be opened. Please check WebGL support and try again.";
+    localGameButton.disabled = false;
+    computerGameButton.disabled = false;
+  }
+}
+
 app.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof Element)) return;
 
-  if (target.closest("[data-open-settings]")) {
+  if (target.closest("[data-open-local]")) {
+    void launchGame("local");
+  } else if (target.closest("[data-open-computer]")) {
+    void launchGame("computer");
+  } else if (target.closest("[data-open-settings]")) {
     if (!settingsDialog.open) settingsDialog.showModal();
   } else if (target.closest("[data-open-credits]")) {
     if (!creditsDialog.open) creditsDialog.showModal();
@@ -129,25 +208,9 @@ app.addEventListener("click", (event) => {
     disposeGame = null;
     viewport.hidden = true;
     welcome.hidden = false;
-    openButton.disabled = false;
+    localGameButton.disabled = false;
+    computerGameButton.disabled = false;
     status.textContent = "";
     app.classList.remove("is-playing");
-  }
-});
-
-openButton.addEventListener("click", async () => {
-  openButton.disabled = true;
-  status.textContent = "Setting the table…";
-
-  try {
-    const { mountChessGame } = await import("./game/chess-game");
-    disposeGame = mountChessGame(viewport, currentTheme, keepFreeView);
-    welcome.hidden = true;
-    viewport.hidden = false;
-    status.textContent = "";
-    app.classList.add("is-playing");
-  } catch {
-    status.textContent = "The 3D board could not be opened. Please try again.";
-    openButton.disabled = false;
   }
 });

@@ -1,5 +1,16 @@
 import { Chess, type Square } from "chess.js";
-import { ChessBoard3D, type BoardTheme, type RenderPiece } from "./chess-board-3d";
+import { ChessBoard3D, type BoardTheme, type PieceColor, type RenderPiece } from "./chess-board-3d";
+import { StockfishEngine } from "./stockfish-engine";
+
+export type GameMode = "local" | "computer";
+
+export interface ChessGameOptions {
+  initialTheme: BoardTheme;
+  keepFreeView: boolean;
+  mode: GameMode;
+  playerColor: PieceColor;
+  engineDepth: number;
+}
 
 type PromotionPiece = "q" | "r" | "b" | "n";
 
@@ -29,22 +40,37 @@ const pieceGlyphs: Record<string, string> = {
   bk: "♚",
 };
 
-export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme, keepFreeView: boolean): () => void {
+function requireElement<T extends Element>(element: T | null, description: string): T {
+  if (!element) throw new Error(`The ${description} is missing.`);
+  return element;
+}
+
+export function mountChessGame(container: HTMLElement, options: ChessGameOptions): () => void {
   const chess = new Chess();
   let selectedSquare: Square | null = null;
   let pendingPromotion: { from: Square; to: Square } | null = null;
+  let engine: StockfishEngine | null = null;
+  let engineReady = options.mode === "local";
+  let engineThinking = false;
+  let engineFailed = false;
+  let engineMessage = "";
+  let resetting = false;
+  let disposed = false;
+
+  const playerLabel = options.playerColor === "w" ? "White" : "Black";
+  const computerLabel = options.playerColor === "w" ? "Black" : "White";
 
   container.innerHTML = `
     <section class="game-screen" aria-labelledby="game-heading">
       <header class="game-header">
         <div>
           <p class="eyebrow">Chess Titan Reborn</p>
-          <h1 id="game-heading">Local game</h1>
+          <h1 id="game-heading">${options.mode === "computer" ? "Play vs computer" : "Local game"}</h1>
         </div>
         <div class="game-actions">
           <button class="secondary-action" type="button" data-back-to-menu>Main menu</button>
           <button class="secondary-action" type="button" data-open-settings>Settings</button>
-          <button class="secondary-action" type="button" data-undo>Undo move</button>
+          <button class="secondary-action" type="button" data-undo>${options.mode === "computer" ? "Undo turn" : "Undo move"}</button>
           <button class="primary-action" type="button" data-new-game>New game</button>
         </div>
       </header>
@@ -61,6 +87,7 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
           <section class="status-card" aria-labelledby="status-heading">
             <p class="eyebrow" id="status-heading">Game status</p>
             <p class="turn-status" data-turn-status aria-live="polite"></p>
+            <p class="engine-status" data-engine-status aria-live="polite" hidden></p>
           </section>
           <section class="promotion-card" data-promotion-card hidden aria-labelledby="promotion-heading">
             <p class="eyebrow" id="promotion-heading">Choose promotion</p>
@@ -73,38 +100,27 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
             </div>
             <ol class="move-list" data-move-list></ol>
           </section>
-          <p class="local-game-note">Pass-and-play on this device. The view turns toward the next player after each move. Computer play will be added separately.</p>
+          <p class="local-game-note">${options.mode === "computer"
+            ? `You are ${playerLabel}; Stockfish plays ${computerLabel}. The engine runs on this device.`
+            : "Pass-and-play on this device. The view turns toward the next player after each move."}</p>
         </aside>
       </div>
       <footer class="site-credit">© 2026 jakariatanjim-svg</footer>
     </section>
   `;
 
-  const gameScreen = container.querySelector<HTMLElement>(".game-screen");
-  const boardElement = container.querySelector<HTMLElement>("[data-chessboard]");
-  const boardControls = container.querySelector<HTMLElement>("[data-board-controls]");
-  const turnStatus = container.querySelector<HTMLElement>("[data-turn-status]");
-  const interactionHint = container.querySelector<HTMLElement>("[data-interaction-hint]");
-  const moveList = container.querySelector<HTMLOListElement>("[data-move-list]");
-  const moveCount = container.querySelector<HTMLElement>("[data-move-count]");
-  const undoButton = container.querySelector<HTMLButtonElement>("[data-undo]");
-  const promotionCard = container.querySelector<HTMLElement>("[data-promotion-card]");
-  const promotionOptions = container.querySelector<HTMLElement>("[data-promotion-options]");
-
-  if (
-    !gameScreen ||
-    !boardElement ||
-    !boardControls ||
-    !turnStatus ||
-    !interactionHint ||
-    !moveList ||
-    !moveCount ||
-    !undoButton ||
-    !promotionCard ||
-    !promotionOptions
-  ) {
-    throw new Error("The chess game interface could not be initialized.");
-  }
+  const gameScreen = requireElement(container.querySelector<HTMLElement>(".game-screen"), "game screen");
+  const boardElement = requireElement(container.querySelector<HTMLElement>("[data-chessboard]"), "3D board");
+  const boardControls = requireElement(container.querySelector<HTMLElement>("[data-board-controls]"), "accessible board");
+  const turnStatus = requireElement(container.querySelector<HTMLElement>("[data-turn-status]"), "turn status");
+  const engineStatus = requireElement(container.querySelector<HTMLElement>("[data-engine-status]"), "engine status");
+  const interactionHint = requireElement(container.querySelector<HTMLElement>("[data-interaction-hint]"), "interaction hint");
+  const moveList = requireElement(container.querySelector<HTMLOListElement>("[data-move-list]"), "move list");
+  const moveCount = requireElement(container.querySelector<HTMLElement>("[data-move-count]"), "move count");
+  const undoButton = requireElement(container.querySelector<HTMLButtonElement>("[data-undo]"), "undo button");
+  const newGameButton = requireElement(container.querySelector<HTMLButtonElement>("[data-new-game]"), "new game button");
+  const promotionCard = requireElement(container.querySelector<HTMLElement>("[data-promotion-card]"), "promotion panel");
+  const promotionOptions = requireElement(container.querySelector<HTMLElement>("[data-promotion-options]"), "promotion options");
 
   const squareButtons = new Map<Square, HTMLButtonElement>();
   for (const rank of ranks) {
@@ -120,9 +136,31 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
     }
   }
 
-  const boardView = new ChessBoard3D(boardElement, handleSquareClick, initialTheme, keepFreeView);
+  const boardView = new ChessBoard3D(
+    boardElement,
+    handleSquareClick,
+    options.initialTheme,
+    options.keepFreeView,
+  );
 
-  const colorName = (color: "w" | "b"): string => (color === "w" ? "White" : "Black");
+  if (options.mode === "computer") {
+    try {
+      engine = new StockfishEngine();
+    } catch {
+      engineFailed = true;
+      engineMessage = "The bundled Stockfish worker could not be started.";
+    }
+  }
+
+  if (options.mode === "computer" && options.playerColor === "b") {
+    boardView.rotateForNextPlayer();
+  }
+
+  const colorName = (color: PieceColor): string => (color === "w" ? "White" : "Black");
+
+  function isHumanTurn(): boolean {
+    return options.mode === "local" || chess.turn() === options.playerColor;
+  }
 
   function describeGameState(): string {
     if (chess.isCheckmate()) {
@@ -155,7 +193,17 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
     return pieces;
   }
 
+  function canUndo(): boolean {
+    const history = chess.history({ verbose: true });
+    if (!history.length || resetting || engineThinking) return false;
+    if (options.mode === "local") return true;
+    if (history.length >= 2) return true;
+    const lastMove = history.at(-1);
+    return (engineFailed || chess.isGameOver()) && lastMove?.color === options.playerColor;
+  }
+
   function renderAccessibleBoard(): void {
+    const inputLocked = resetting || engineThinking || engineFailed || !isHumanTurn();
     for (const [square, button] of squareButtons) {
       const piece = chess.get(square);
       const label = piece
@@ -164,7 +212,7 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
       button.setAttribute("aria-label", label);
       button.setAttribute("aria-pressed", String(selectedSquare === square));
       button.textContent = piece ? `${pieceGlyphs[`${piece.color}${piece.type}`]} ${square}` : square;
-      button.disabled = chess.isGameOver() || pendingPromotion !== null;
+      button.disabled = chess.isGameOver() || pendingPromotion !== null || inputLocked;
     }
   }
 
@@ -201,7 +249,6 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
   function renderPromotionOptions(): void {
     promotionCard.hidden = pendingPromotion === null;
     promotionOptions.replaceChildren();
-
     if (!pendingPromotion) return;
 
     for (const type of promotionPieces) {
@@ -216,14 +263,29 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
   }
 
   function render(positionChanged = false): void {
+    if (disposed) return;
     turnStatus.textContent = describeGameState();
-    undoButton.disabled = chess.history().length === 0;
+    undoButton.disabled = !canUndo();
+    newGameButton.disabled = resetting;
+
     const moveHint = pendingPromotion
       ? "Choose the piece for your pawn promotion."
       : selectedSquare
         ? `Selected ${selectedSquare}. Choose a highlighted square or another piece.`
         : "Select one of your pieces, then choose a highlighted square.";
     interactionHint.textContent = `${moveHint} Right-drag rotates the view; mouse-wheel zoom is disabled.`;
+
+    if (options.mode === "computer") {
+      engineStatus.hidden = false;
+      engineStatus.textContent = engineFailed
+        ? engineMessage
+        : engineThinking
+          ? engineReady ? "Stockfish is calculating…" : "Loading Stockfish…"
+          : engineReady ? `Stockfish 19 Lite · depth ${options.engineDepth}` : "Loading Stockfish…";
+    } else {
+      engineStatus.hidden = true;
+      engineStatus.textContent = "";
+    }
 
     if (positionChanged) boardView.setPosition(boardPieces());
     const legalMoves = selectedSquare
@@ -239,16 +301,151 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
     renderPromotionOptions();
   }
 
-  function commitMove(from: Square, to: Square, promotion?: PromotionPiece): void {
+  async function requestEngineMove(): Promise<void> {
+    if (
+      disposed ||
+      resetting ||
+      options.mode !== "computer" ||
+      !engine ||
+      engineFailed ||
+      engineThinking ||
+      chess.isGameOver() ||
+      isHumanTurn()
+    ) {
+      return;
+    }
+
+    engineThinking = true;
+    render();
+    try {
+      const move = await engine.search(chess.fen(), options.engineDepth);
+      if (disposed) return;
+      engineThinking = false;
+      if (resetting) {
+        render();
+        return;
+      }
+      if (!move) {
+        if (!chess.isGameOver()) {
+          engineFailed = true;
+          engineMessage = "Stockfish did not return a legal move. Start a new game or try local play.";
+        }
+        render();
+        return;
+      }
+
+      chess.move(move);
+      selectedSquare = null;
+      pendingPromotion = null;
+      render(true);
+    } catch (error) {
+      if (disposed) return;
+      engineThinking = false;
+      if (resetting) {
+        render();
+        return;
+      }
+      engineFailed = true;
+      engineMessage = error instanceof Error ? error.message : "Stockfish could not calculate a move.";
+      render();
+    }
+  }
+
+  async function initializeEngine(): Promise<void> {
+    if (options.mode !== "computer" || !engine) {
+      if (options.mode === "computer") {
+        engineFailed = true;
+        engineMessage ||= "The bundled Stockfish worker could not be started.";
+        render();
+      }
+      return;
+    }
+
+    try {
+      await engine.ready();
+      if (disposed) return;
+      engineReady = true;
+      render();
+      if (!resetting && !isHumanTurn()) void requestEngineMove();
+    } catch (error) {
+      if (disposed) return;
+      engineFailed = true;
+      engineMessage = error instanceof Error ? error.message : "Stockfish could not be loaded.";
+      render();
+    }
+  }
+
+  async function resetGame(): Promise<void> {
+    if (resetting || disposed) return;
+    resetting = true;
+    render();
+
+    try {
+      if (engine) {
+        await engine.cancelSearch();
+        await engine.newGame();
+      }
+      if (disposed) return;
+      chess.reset();
+      selectedSquare = null;
+      pendingPromotion = null;
+      engineThinking = false;
+      boardView.resetPlayerView();
+      if (options.mode === "computer" && options.playerColor === "b") {
+        boardView.rotateForNextPlayer();
+      }
+    } catch (error) {
+      if (!disposed) {
+        engineFailed = true;
+        engineMessage = error instanceof Error ? error.message : "Stockfish could not start a new game.";
+      }
+    } finally {
+      resetting = false;
+      render(true);
+      if (options.mode === "computer" && !engineFailed && !isHumanTurn()) void requestEngineMove();
+    }
+  }
+
+  function undoTurn(): void {
+    if (!canUndo()) return;
+    const history = chess.history({ verbose: true });
+
+    if (options.mode === "local") {
+      if (chess.undo()) boardView.rotateForNextPlayer();
+    } else if (history.length >= 2) {
+      chess.undo();
+      chess.undo();
+    } else {
+      chess.undo();
+    }
+
+    selectedSquare = null;
+    pendingPromotion = null;
+    render(true);
+    if (options.mode === "computer" && !engineFailed && !isHumanTurn()) void requestEngineMove();
+  }
+
+  function commitHumanMove(from: Square, to: Square, promotion?: PromotionPiece): void {
     chess.move({ from, to, ...(promotion ? { promotion } : {}) });
     selectedSquare = null;
     pendingPromotion = null;
-    boardView.rotateForNextPlayer();
+    if (options.mode === "local") boardView.rotateForNextPlayer();
     render(true);
+    if (options.mode === "computer" && !chess.isGameOver()) void requestEngineMove();
   }
 
   function handleSquareClick(square: Square): void {
-    if (chess.isGameOver() || pendingPromotion) return;
+    if (
+      disposed ||
+      resetting ||
+      chess.isGameOver() ||
+      pendingPromotion ||
+      engineFailed ||
+      engineThinking ||
+      !isHumanTurn()
+    ) {
+      return;
+    }
 
     if (selectedSquare) {
       const move = chess
@@ -259,7 +456,7 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
           pendingPromotion = { from: selectedSquare, to: square };
           render();
         } else {
-          commitMove(selectedSquare, square);
+          commitHumanMove(selectedSquare, square);
         }
         return;
       }
@@ -275,20 +472,12 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
     if (!(target instanceof Element)) return;
 
     if (target.closest("[data-new-game]")) {
-      chess.reset();
-      selectedSquare = null;
-      pendingPromotion = null;
-      boardView.resetPlayerView();
-      render(true);
+      void resetGame();
       return;
     }
 
     if (target.closest("[data-undo]")) {
-      const undoneMove = chess.undo();
-      selectedSquare = null;
-      pendingPromotion = null;
-      if (undoneMove) boardView.rotateForNextPlayer();
-      render(true);
+      undoTurn();
       return;
     }
 
@@ -302,7 +491,7 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
     const promotionButton = target.closest<HTMLButtonElement>("[data-promotion]");
     const promotion = promotionButton?.dataset.promotion as PromotionPiece | undefined;
     if (pendingPromotion && promotion && promotionPieces.includes(promotion)) {
-      commitMove(pendingPromotion.from, pendingPromotion.to, promotion);
+      commitHumanMove(pendingPromotion.from, pendingPromotion.to, promotion);
     }
   });
 
@@ -317,10 +506,13 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme,
   window.addEventListener("chess-free-view-setting-change", handleFreeViewSettingChange);
 
   render(true);
+  if (options.mode === "computer") void initializeEngine();
 
   return () => {
+    disposed = true;
     window.removeEventListener("chess-board-theme-change", handleThemeChange);
     window.removeEventListener("chess-free-view-setting-change", handleFreeViewSettingChange);
+    engine?.dispose();
     boardView.dispose();
     container.replaceChildren();
   };

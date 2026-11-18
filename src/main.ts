@@ -14,6 +14,7 @@ app.innerHTML = `
       <p class="intro">Play a complete game of chess with familiar rules and a fresh tabletop feel.</p>
       <button class="primary-action" type="button" data-open-game>Open board</button>
       <p class="loading-status" data-loading-status aria-live="polite"></p>
+      <footer class="site-credit">© 2026 jakariatanjim-svg</footer>
     </section>
     <section class="game-viewport" data-game-viewport aria-label="Chess game" hidden></section>
   </main>

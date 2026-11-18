@@ -10,6 +10,7 @@ The project is in development, but the current beta is playable: it supports loc
 
 - Play standard chess locally or challenge Stockfish 19 Lite, running in your browser with no game server
 - Play with original procedural 3D chess pieces; the previous move is marked in blue and a checked king's square in red
+- Keep captured pieces visible in small 3D side trays, grouped by piece color and swapping screen sides with the player-facing view
 - See the board straight from the current player's side, with a downward camera tilt instead of a diagonal side view
 - Choose among three board finishes: **Classic Matte**, **Reborn Glass**, and **Royal Marble**
 - Right-click and drag to adjust the 3D view; in local play, the board turns toward the next player after each move

@@ -12,6 +12,11 @@ export interface RenderPiece {
   color: PieceColor;
 }
 
+export interface CapturedPiece {
+  type: PieceType;
+  color: PieceColor;
+}
+
 export interface HighlightedMove {
   square: Square;
   capture: boolean;
@@ -43,6 +48,7 @@ export class ChessBoard3D {
   private readonly container: HTMLElement;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.PerspectiveCamera;
+  private readonly horizontalFrameWidth = 12.2;
   private readonly renderer: THREE.WebGLRenderer;
   private readonly controls: OrbitControls;
   private readonly resizeObserver: ResizeObserver;
@@ -53,6 +59,7 @@ export class ChessBoard3D {
   private readonly defaultCameraPosition = new THREE.Vector3();
   private readonly boardRoot = new THREE.Group();
   private readonly pieceRoot = new THREE.Group();
+  private readonly capturedPieceRoot = new THREE.Group();
   private readonly highlightRoot = new THREE.Group();
   private readonly tileMeshes = new Map<Square, { mesh: THREE.Mesh; isDark: boolean }>();
   private readonly onSquareClick: (square: Square) => void;
@@ -64,6 +71,7 @@ export class ChessBoard3D {
   private innerFrameMaterial!: THREE.MeshPhysicalMaterial;
   private readonly coordinateMaterials: THREE.SpriteMaterial[] = [];
   private pieces: RenderPiece[] = [];
+  private capturedPieces: CapturedPiece[] = [];
   private selectedSquare: Square | null = null;
   private highlightedMoves: HighlightedMove[] = [];
   private lastMove: { from: Square; to: Square } | null = null;
@@ -139,7 +147,7 @@ export class ChessBoard3D {
     });
 
     this.buildBoard();
-    this.scene.add(this.pieceRoot, this.highlightRoot);
+    this.scene.add(this.pieceRoot, this.capturedPieceRoot, this.highlightRoot);
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.target.set(0, 0.05, 0);
@@ -180,6 +188,28 @@ export class ChessBoard3D {
       model.position.set(position.x, 0.235, position.z);
       this.pieceRoot.add(model);
     }
+  }
+
+  setCapturedPieces(pieces: CapturedPiece[]): void {
+    this.capturedPieces = pieces.map((piece) => ({ ...piece }));
+    this.clearGroup(this.capturedPieceRoot);
+
+    const piecesByColor: Record<PieceColor, CapturedPiece[]> = { w: [], b: [] };
+    for (const piece of this.capturedPieces) piecesByColor[piece.color].push(piece);
+
+    for (const color of ["w", "b"] as const) {
+      const side = color === "w" ? 1 : -1;
+      for (const [index, piece] of piecesByColor[color].entries()) {
+        const column = Math.floor(index / 8);
+        const row = index % 8;
+        const model = this.createPiece(piece);
+        model.scale.setScalar(0.48);
+        model.position.set(side * (4.64 + column * 0.52), 0.256, 3.5 - row);
+        this.capturedPieceRoot.add(model);
+      }
+    }
+
+    this.renderFrame();
   }
 
   setKeepFreeView(keep: boolean): void {
@@ -298,6 +328,7 @@ export class ChessBoard3D {
     previousDark.dispose();
 
     this.setPosition(this.pieces);
+    this.setCapturedPieces(this.capturedPieces);
     this.setHighlights(this.selectedSquare, this.highlightedMoves, this.lastMove, this.checkedKingSquare);
   }
 
@@ -514,8 +545,25 @@ export class ChessBoard3D {
       }
     }
 
+    this.addCaptureTrays();
     this.addCoordinateLabels();
     this.scene.add(this.boardRoot);
+  }
+
+  private addCaptureTrays(): void {
+    for (const side of [-1, 1]) {
+      const centerX = side * 4.94;
+      const tray = new THREE.Mesh(new THREE.BoxGeometry(1.46, 0.68, 8.62), this.frameMaterial);
+      tray.position.set(centerX, -0.075, 0);
+      tray.castShadow = true;
+      tray.receiveShadow = true;
+      this.boardRoot.add(tray);
+
+      const surface = new THREE.Mesh(new THREE.BoxGeometry(1.38, 0.012, 8.42), this.innerFrameMaterial);
+      surface.position.set(centerX, 0.261, 0);
+      surface.receiveShadow = true;
+      this.boardRoot.add(surface);
+    }
   }
 
   private addCoordinateLabels(): void {
@@ -551,7 +599,7 @@ export class ChessBoard3D {
     }
   }
 
-  private createPiece(piece: RenderPiece): THREE.Group {
+  private createPiece(piece: Pick<RenderPiece, "type" | "color">): THREE.Group {
     const palette = this.getPalette();
     const group = new THREE.Group();
     const bodyColor = piece.color === "w"
@@ -765,6 +813,11 @@ export class ChessBoard3D {
     const bounds = this.container.getBoundingClientRect();
     if (bounds.width < 1 || bounds.height < 1) return;
     this.camera.aspect = bounds.width / bounds.height;
+    const cameraDistance = this.camera.position.distanceTo(this.controls.target);
+    const horizontalFitFov = THREE.MathUtils.radToDeg(
+      2 * Math.atan(this.horizontalFrameWidth / (2 * cameraDistance * this.camera.aspect)),
+    );
+    this.camera.fov = THREE.MathUtils.clamp(horizontalFitFov, 28, 48);
     this.camera.updateProjectionMatrix();
     this.renderer.setSize(bounds.width, bounds.height, false);
     this.renderFrame();

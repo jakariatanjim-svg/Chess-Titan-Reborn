@@ -2,7 +2,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { Square } from "chess.js";
 
-export type BoardTheme = "classic" | "glass" | "marble";
+export type BoardTheme = "titan" | "classic" | "glass" | "marble";
 export type PieceType = "p" | "n" | "b" | "r" | "q" | "k";
 export type PieceColor = "w" | "b";
 
@@ -58,6 +58,8 @@ export class ChessBoard3D {
   private readonly initialCameraPosition = new THREE.Vector3(0, 11.65, 9.75);
   private readonly defaultCameraPosition = new THREE.Vector3();
   private readonly boardRoot = new THREE.Group();
+  private readonly signatureDetailRoot = new THREE.Group();
+  private readonly coordinateRoot = new THREE.Group();
   private readonly pieceRoot = new THREE.Group();
   private readonly capturedPieceRoot = new THREE.Group();
   private readonly highlightRoot = new THREE.Group();
@@ -69,6 +71,8 @@ export class ChessBoard3D {
   private readonly frameMaterial: THREE.MeshPhysicalMaterial;
   private readonly trimMaterial: THREE.MeshPhysicalMaterial;
   private innerFrameMaterial!: THREE.MeshPhysicalMaterial;
+  private groundMaterial!: THREE.MeshStandardMaterial;
+  private environmentTexture: THREE.CanvasTexture | null = null;
   private readonly coordinateMaterials: THREE.SpriteMaterial[] = [];
   private pieces: RenderPiece[] = [];
   private capturedPieces: CapturedPiece[] = [];
@@ -107,17 +111,20 @@ export class ChessBoard3D {
     this.renderer.domElement.setAttribute("aria-hidden", "true");
 
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color("#11171d");
+    this.scene.background = new THREE.Color(theme === "titan" ? "#173238" : "#11171d");
+    this.environmentTexture = this.createStudioEnvironment();
+    this.scene.environment = this.environmentTexture;
+    this.scene.environmentIntensity = theme === "titan" ? 1.15 : 0.85;
 
     this.camera = new THREE.PerspectiveCamera(36, 1, 0.1, 80);
     this.camera.position.copy(this.initialCameraPosition);
     this.camera.lookAt(0, 0.1, 0);
 
-    const hemisphere = new THREE.HemisphereLight("#e6edf4", "#24201b", 1.65);
+    const hemisphere = new THREE.HemisphereLight("#e8f2f4", "#15191a", 1.85);
     this.scene.add(hemisphere);
 
-    const keyLight = new THREE.DirectionalLight("#fff1d2", 3.1);
-    keyLight.position.set(4.5, 9, 6);
+    const keyLight = new THREE.DirectionalLight("#fff0d4", 3.7);
+    keyLight.position.set(4.5, 10, 6);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.set(1536, 1536);
     keyLight.shadow.camera.left = -7;
@@ -127,9 +134,13 @@ export class ChessBoard3D {
     keyLight.shadow.bias = -0.00035;
     this.scene.add(keyLight);
 
-    const fillLight = new THREE.DirectionalLight("#94b8cf", 1.05);
+    const fillLight = new THREE.DirectionalLight("#9dc6d2", 1.35);
     fillLight.position.set(-6, 5, -4);
     this.scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight("#e8f2f0", 1.05);
+    rimLight.position.set(0, 7, -8);
+    this.scene.add(rimLight);
 
     this.lightTileMaterial = this.createTileMaterial(palette.light, palette, false);
     this.darkTileMaterial = this.createTileMaterial(palette.dark, palette, true);
@@ -303,6 +314,11 @@ export class ChessBoard3D {
     const previousLight = this.lightTileMaterial;
     const previousDark = this.darkTileMaterial;
     this.activeTheme = theme;
+    this.signatureDetailRoot.visible = theme === "titan";
+    this.coordinateRoot.visible = theme !== "titan";
+    this.scene.background = new THREE.Color(theme === "titan" ? "#173238" : "#11171d");
+    this.scene.environmentIntensity = theme === "titan" ? 1.15 : 0.85;
+    this.groundMaterial.color.set(theme === "titan" ? "#10292d" : "#10161c");
     const palette = this.getPalette();
     this.lightTileMaterial = this.createTileMaterial(palette.light, palette, false);
     this.darkTileMaterial = this.createTileMaterial(palette.dark, palette, true);
@@ -364,11 +380,73 @@ export class ChessBoard3D {
       if ("map" in material && material.map instanceof THREE.Texture) material.map.dispose();
       material.dispose();
     });
+    this.environmentTexture?.dispose();
     this.renderer.dispose();
     this.container.replaceChildren();
   }
 
+  private createStudioEnvironment(): THREE.CanvasTexture | null {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1024;
+    canvas.height = 512;
+    const context = canvas.getContext("2d");
+    if (!context) return null;
+
+    const backdrop = context.createLinearGradient(0, 0, 0, canvas.height);
+    backdrop.addColorStop(0, "#091317");
+    backdrop.addColorStop(0.23, "#20383d");
+    backdrop.addColorStop(0.5, "#899393");
+    backdrop.addColorStop(0.73, "#34484a");
+    backdrop.addColorStop(1, "#0b1518");
+    context.fillStyle = backdrop;
+    context.fillRect(0, 0, canvas.width, canvas.height);
+
+    const softboxes = [
+      { x: 88, y: 64, width: 116, height: 316, alpha: 0.76 },
+      { x: 382, y: 92, width: 72, height: 244, alpha: 0.5 },
+      { x: 732, y: 58, width: 144, height: 330, alpha: 0.68 },
+    ];
+    for (const panel of softboxes) {
+      const light = context.createLinearGradient(panel.x, 0, panel.x + panel.width, 0);
+      light.addColorStop(0, "rgba(255, 244, 218, 0)");
+      light.addColorStop(0.25, `rgba(255, 244, 218, ${panel.alpha * 0.32})`);
+      light.addColorStop(0.75, `rgba(255, 244, 218, ${panel.alpha})`);
+      light.addColorStop(1, "rgba(255, 244, 218, 0)");
+      context.fillStyle = light;
+      context.fillRect(panel.x, panel.y, panel.width, panel.height);
+    }
+
+    const horizon = context.createLinearGradient(0, 240, 0, 286);
+    horizon.addColorStop(0, "rgba(255, 248, 228, 0)");
+    horizon.addColorStop(0.5, "rgba(255, 248, 228, 0.22)");
+    horizon.addColorStop(1, "rgba(255, 248, 228, 0)");
+    context.fillStyle = horizon;
+    context.fillRect(0, 240, canvas.width, 46);
+
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.mapping = THREE.EquirectangularReflectionMapping;
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.needsUpdate = true;
+    return texture;
+  }
+
   private getPalette(): Palette {
+    if (this.activeTheme === "titan") {
+      return {
+        light: "#d6c9ad",
+        dark: "#202b2a",
+        frame: "#141c1c",
+        trim: "#c7a45c",
+        label: "#e4d5b6",
+        tileRoughness: 0.3,
+        tileMetalness: 0.12,
+        pieceRoughness: 0.2,
+        pieceMetalness: 0.18,
+        clearcoat: 0.92,
+        tilePattern: "marble",
+      };
+    }
+
     if (this.activeTheme === "marble") {
       return {
         light: "#e6dccb",
@@ -495,10 +573,12 @@ export class ChessBoard3D {
   }
 
   private buildBoard(): void {
-    const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(100, 100),
-      new THREE.MeshStandardMaterial({ color: "#10161c", roughness: 0.96, metalness: 0.04 }),
-    );
+    this.groundMaterial = new THREE.MeshStandardMaterial({
+      color: this.activeTheme === "titan" ? "#10292d" : "#10161c",
+      roughness: 0.92,
+      metalness: 0.04,
+    });
+    const ground = new THREE.Mesh(new THREE.PlaneGeometry(100, 100), this.groundMaterial);
     ground.rotation.x = -Math.PI / 2;
     ground.position.y = -0.47;
     ground.receiveShadow = true;
@@ -546,8 +626,45 @@ export class ChessBoard3D {
     }
 
     this.addCaptureTrays();
+    this.addSignatureDetails();
     this.addCoordinateLabels();
+    this.signatureDetailRoot.visible = this.activeTheme === "titan";
+    this.coordinateRoot.visible = this.activeTheme !== "titan";
+    this.boardRoot.add(this.signatureDetailRoot, this.coordinateRoot);
     this.scene.add(this.boardRoot);
+  }
+
+  private addSignatureDetails(): void {
+    const border = 4.12;
+    const railY = 0.108;
+    const rails: Array<{ geometry: THREE.BoxGeometry; position: [number, number, number] }> = [
+      { geometry: new THREE.BoxGeometry(8.24, 0.022, 0.026), position: [0, railY, -border] },
+      { geometry: new THREE.BoxGeometry(8.24, 0.022, 0.026), position: [0, railY, border] },
+      { geometry: new THREE.BoxGeometry(0.026, 0.022, 8.24), position: [-border, railY, 0] },
+      { geometry: new THREE.BoxGeometry(0.026, 0.022, 8.24), position: [border, railY, 0] },
+    ];
+
+    for (const rail of rails) {
+      const mesh = new THREE.Mesh(rail.geometry, this.trimMaterial);
+      mesh.position.set(...rail.position);
+      mesh.castShadow = true;
+      this.signatureDetailRoot.add(mesh);
+    }
+
+    for (const x of [-border, border]) {
+      for (const z of [-border, border]) {
+        const corner = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.028, 0.22), this.trimMaterial);
+        corner.position.set(x, railY + 0.006, z);
+        corner.rotation.y = Math.PI / 4;
+        corner.castShadow = true;
+        this.signatureDetailRoot.add(corner);
+
+        const inset = new THREE.Mesh(new THREE.OctahedronGeometry(0.055, 0), this.frameMaterial);
+        inset.scale.set(1, 0.32, 1);
+        inset.position.set(x, railY + 0.027, z);
+        this.signatureDetailRoot.add(inset);
+      }
+    }
   }
 
   private addCaptureTrays(): void {
@@ -595,33 +712,34 @@ export class ChessBoard3D {
       const sprite = new THREE.Sprite(material);
       sprite.position.set(label.x, 0.11, label.z);
       sprite.scale.set(0.25, 0.25, 1);
-      this.boardRoot.add(sprite);
+      this.coordinateRoot.add(sprite);
     }
   }
 
   private createPiece(piece: Pick<RenderPiece, "type" | "color">): THREE.Group {
     const palette = this.getPalette();
     const group = new THREE.Group();
+    const isSignature = this.activeTheme === "titan";
     const bodyColor = piece.color === "w"
-      ? (this.activeTheme === "glass" ? "#edf5f0" : this.activeTheme === "marble" ? "#fffaf0" : "#f5ecdc")
-      : (this.activeTheme === "glass" ? "#15232b" : this.activeTheme === "marble" ? "#17342d" : "#242321");
+      ? (isSignature ? "#f2e9d7" : this.activeTheme === "glass" ? "#edf5f0" : this.activeTheme === "marble" ? "#fffaf0" : "#f5ecdc")
+      : (isSignature ? "#202427" : this.activeTheme === "glass" ? "#15232b" : this.activeTheme === "marble" ? "#17342d" : "#242321");
     const bodyMaterial = new THREE.MeshPhysicalMaterial({
       color: bodyColor,
-      metalness: palette.pieceMetalness,
-      roughness: palette.pieceRoughness,
-      clearcoat: palette.clearcoat,
-      clearcoatRoughness: Math.max(0.08, palette.pieceRoughness * 0.65),
+      metalness: isSignature && piece.color === "b" ? 0.72 : palette.pieceMetalness,
+      roughness: isSignature && piece.color === "b" ? 0.18 : palette.pieceRoughness,
+      clearcoat: isSignature ? 1 : palette.clearcoat,
+      clearcoatRoughness: isSignature ? 0.12 : Math.max(0.08, palette.pieceRoughness * 0.65),
     });
     const accentMaterial = new THREE.MeshPhysicalMaterial({
-      color: this.activeTheme === "glass" ? "#d7bf82" : this.activeTheme === "marble" ? "#ead08f" : "#c9a76d",
-      metalness: 0.78,
-      roughness: this.activeTheme === "glass" ? 0.18 : this.activeTheme === "marble" ? 0.2 : 0.36,
-      clearcoat: 0.72,
+      color: isSignature ? "#d8b765" : this.activeTheme === "glass" ? "#d7bf82" : this.activeTheme === "marble" ? "#ead08f" : "#c9a76d",
+      metalness: isSignature ? 0.88 : 0.78,
+      roughness: isSignature ? 0.17 : this.activeTheme === "glass" ? 0.18 : this.activeTheme === "marble" ? 0.2 : 0.36,
+      clearcoat: isSignature ? 0.95 : 0.72,
     });
 
     const addLathe = (profile: Array<[number, number]>, material = bodyMaterial): void => {
       const points = profile.map(([radius, height]) => new THREE.Vector2(radius, height));
-      this.addPieceMesh(group, new THREE.LatheGeometry(points, 32), material);
+      this.addPieceMesh(group, new THREE.LatheGeometry(points, 48), material);
     };
     const addCylinder = (
       radiusTop: number,
@@ -630,19 +748,41 @@ export class ChessBoard3D {
       y: number,
       material = bodyMaterial,
     ): void => {
-      this.addPieceMesh(group, new THREE.CylinderGeometry(radiusTop, radiusBottom, height, 32), material, [0, y, 0]);
+      this.addPieceMesh(group, new THREE.CylinderGeometry(radiusTop, radiusBottom, height, 48), material, [0, y, 0]);
     };
-    const base: Array<[number, number]> = [
-      [0, 0.015], [0.18, 0.015], [0.25, 0.055], [0.27, 0.095],
-      [0.2, 0.135], [0.14, 0.17], [0.12, 0.205], [0, 0.205],
-    ];
+    const addAccentRing = (radius: number, height: number, tube = 0.012): void => {
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(radius, tube, 12, 48), accentMaterial);
+      ring.rotation.x = Math.PI / 2;
+      ring.position.y = height;
+      ring.castShadow = true;
+      group.add(ring);
+    };
+    const base: Array<[number, number]> = isSignature
+      ? [
+          [0, 0.015], [0.18, 0.015], [0.245, 0.03], [0.278, 0.058],
+          [0.263, 0.085], [0.238, 0.105], [0.272, 0.132], [0.25, 0.157],
+          [0.205, 0.18], [0.16, 0.207], [0.14, 0.235], [0, 0.235],
+        ]
+      : [
+          [0, 0.015], [0.18, 0.015], [0.25, 0.055], [0.27, 0.095],
+          [0.2, 0.135], [0.14, 0.17], [0.12, 0.205], [0, 0.205],
+        ];
 
     addLathe(base);
+    if (isSignature) {
+      addAccentRing(0.263, 0.061, 0.013);
+      addAccentRing(0.257, 0.132, 0.012);
+      addAccentRing(0.2, 0.18, 0.009);
+    }
 
     switch (piece.type) {
       case "p": {
         addLathe([[0, 0.18], [0.12, 0.2], [0.1, 0.3], [0.085, 0.43], [0.12, 0.49], [0.15, 0.52], [0, 0.52]]);
-        this.addPieceMesh(group, new THREE.SphereGeometry(0.145, 24, 16), bodyMaterial, [0, 0.61, 0]);
+        if (isSignature) {
+          addAccentRing(0.104, 0.32, 0.01);
+          addAccentRing(0.13, 0.49, 0.011);
+        }
+        this.addPieceMesh(group, new THREE.SphereGeometry(0.145, 32, 20), bodyMaterial, [0, 0.61, 0]);
         break;
       }
       case "r": {
@@ -656,6 +796,10 @@ export class ChessBoard3D {
             bodyMaterial,
             [Math.cos(angle) * 0.155, 0.78, Math.sin(angle) * 0.155],
           );
+        }
+        if (isSignature) {
+          addAccentRing(0.2, 0.58, 0.012);
+          addAccentRing(0.235, 0.72, 0.012);
         }
         break;
       }
@@ -675,41 +819,56 @@ export class ChessBoard3D {
         const horseGeometry = new THREE.ExtrudeGeometry(shape, {
           depth: 0.16,
           bevelEnabled: true,
-          bevelSegments: 2,
+          bevelSegments: 4,
           steps: 1,
           bevelSize: 0.028,
           bevelThickness: 0.025,
         });
         horseGeometry.translate(-0.16, 0.22, -0.08);
         this.addPieceMesh(group, horseGeometry, bodyMaterial);
-        this.addPieceMesh(group, new THREE.SphereGeometry(0.027, 12, 8), accentMaterial, [0.18, 0.61, 0.1]);
+        this.addPieceMesh(group, new THREE.SphereGeometry(0.027, 16, 12), accentMaterial, [0.18, 0.61, 0.1]);
+        if (isSignature) addAccentRing(0.155, 0.39, 0.011);
         break;
       }
       case "b": {
-        addLathe([[0, 0.18], [0.16, 0.22], [0.14, 0.31], [0.1, 0.43], [0.14, 0.54], [0.115, 0.63], [0.07, 0.72], [0, 0.76]]);
-        const ring = new THREE.Mesh(new THREE.TorusGeometry(0.12, 0.022, 8, 28), accentMaterial);
-        ring.rotation.x = Math.PI / 2;
-        ring.position.y = 0.39;
-        ring.castShadow = true;
-        group.add(ring);
-        this.addPieceMesh(group, new THREE.SphereGeometry(0.065, 18, 12), accentMaterial, [0, 0.72, 0]);
+        const bishopProfile: Array<[number, number]> = isSignature
+          ? [[0, 0.18], [0.16, 0.22], [0.145, 0.31], [0.105, 0.42], [0.145, 0.53], [0.135, 0.64], [0.105, 0.74], [0.075, 0.82], [0.035, 0.88], [0, 0.91]]
+          : [[0, 0.18], [0.16, 0.22], [0.14, 0.31], [0.1, 0.43], [0.14, 0.54], [0.115, 0.63], [0.07, 0.72], [0, 0.76]];
+        addLathe(bishopProfile);
+        addAccentRing(0.12, 0.39, 0.022);
+        if (isSignature) addAccentRing(0.14, 0.55, 0.01);
+        this.addPieceMesh(
+          group,
+          new THREE.SphereGeometry(isSignature ? 0.045 : 0.065, 24, 18),
+          accentMaterial,
+          [0, isSignature ? 0.88 : 0.72, 0],
+        );
         break;
       }
       case "q": {
         addLathe([[0, 0.18], [0.17, 0.22], [0.14, 0.32], [0.11, 0.49], [0.16, 0.59], [0.19, 0.64], [0.14, 0.69], [0, 0.69]]);
+        if (isSignature) {
+          addAccentRing(0.155, 0.59, 0.011);
+          addAccentRing(0.17, 0.655, 0.01);
+        }
         for (let index = 0; index < 5; index += 1) {
           const angle = (index * Math.PI * 2) / 5;
           this.addPieceMesh(
             group,
-            new THREE.SphereGeometry(0.058, 14, 10),
+            new THREE.SphereGeometry(0.058, 20, 16),
             accentMaterial,
             [Math.cos(angle) * 0.17, 0.75 + (index % 2) * 0.025, Math.sin(angle) * 0.17],
           );
         }
+        if (isSignature) this.addPieceMesh(group, new THREE.SphereGeometry(0.046, 20, 16), accentMaterial, [0, 0.78, 0]);
         break;
       }
       case "k": {
         addLathe([[0, 0.18], [0.18, 0.22], [0.15, 0.32], [0.12, 0.49], [0.16, 0.59], [0.18, 0.66], [0.13, 0.71], [0, 0.71]]);
+        if (isSignature) {
+          addAccentRing(0.165, 0.62, 0.011);
+          addAccentRing(0.14, 0.72, 0.01);
+        }
         this.addPieceMesh(group, new THREE.BoxGeometry(0.065, 0.28, 0.07), accentMaterial, [0, 0.84, 0]);
         this.addPieceMesh(group, new THREE.BoxGeometry(0.22, 0.065, 0.07), accentMaterial, [0, 0.86, 0]);
         break;

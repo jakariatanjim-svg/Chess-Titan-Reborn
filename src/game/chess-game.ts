@@ -493,7 +493,7 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
 
   const handleThemeChange = (event: Event): void => {
     const theme = (event as CustomEvent<BoardTheme>).detail;
-    if (theme === "classic" || theme === "glass" || theme === "marble") boardView.setTheme(theme);
+    if (theme === "titan" || theme === "classic" || theme === "glass" || theme === "marble") boardView.setTheme(theme);
   };
   const handleFreeViewSettingChange = (event: Event): void => {
     boardView.setKeepFreeView((event as CustomEvent<boolean>).detail === true);

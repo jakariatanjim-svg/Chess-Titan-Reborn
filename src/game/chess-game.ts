@@ -29,7 +29,7 @@ const pieceGlyphs: Record<string, string> = {
   bk: "♚",
 };
 
-export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme): () => void {
+export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme, keepFreeView: boolean): () => void {
   const chess = new Chess();
   let selectedSquare: Square | null = null;
   let pendingPromotion: { from: Square; to: Square } | null = null;
@@ -50,12 +50,12 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme)
       </header>
       <div class="game-layout">
         <section class="board-column" aria-label="Chessboard">
-          <div class="chessboard-3d" data-chessboard aria-label="Interactive 3D chessboard. Drag to rotate the view and select a square to move."></div>
+          <div class="chessboard-3d" data-chessboard aria-label="Interactive 3D chessboard. Right-click and drag to rotate the view. Mouse-wheel zoom is disabled."></div>
           <details class="keyboard-board">
             <summary>Keyboard and screen-reader board controls</summary>
             <div class="accessible-chessboard" data-board-controls role="group" aria-label="Chessboard square controls"></div>
           </details>
-          <p class="interaction-hint" data-interaction-hint aria-live="polite">Select one of your pieces, then choose a highlighted square.</p>
+          <p class="interaction-hint" data-interaction-hint aria-live="polite">Select a piece and a highlighted square to move. Right-click and drag to rotate the view.</p>
         </section>
         <aside class="game-sidebar">
           <section class="status-card" aria-labelledby="status-heading">
@@ -73,7 +73,7 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme)
             </div>
             <ol class="move-list" data-move-list></ol>
           </section>
-          <p class="local-game-note">Pass-and-play on this device. Computer play will be added separately.</p>
+          <p class="local-game-note">Pass-and-play on this device. The view turns toward the next player after each move. Computer play will be added separately.</p>
         </aside>
       </div>
       <footer class="site-credit">© 2026 jakariatanjim-svg</footer>
@@ -120,7 +120,7 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme)
     }
   }
 
-  const boardView = new ChessBoard3D(boardElement, handleSquareClick, initialTheme);
+  const boardView = new ChessBoard3D(boardElement, handleSquareClick, initialTheme, keepFreeView);
 
   const colorName = (color: "w" | "b"): string => (color === "w" ? "White" : "Black");
 
@@ -218,11 +218,12 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme)
   function render(positionChanged = false): void {
     turnStatus.textContent = describeGameState();
     undoButton.disabled = chess.history().length === 0;
-    interactionHint.textContent = pendingPromotion
+    const moveHint = pendingPromotion
       ? "Choose the piece for your pawn promotion."
       : selectedSquare
         ? `Selected ${selectedSquare}. Choose a highlighted square or another piece.`
         : "Select one of your pieces, then choose a highlighted square.";
+    interactionHint.textContent = `${moveHint} Right-drag rotates the view; mouse-wheel zoom is disabled.`;
 
     if (positionChanged) boardView.setPosition(boardPieces());
     const legalMoves = selectedSquare
@@ -242,6 +243,7 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme)
     chess.move({ from, to, ...(promotion ? { promotion } : {}) });
     selectedSquare = null;
     pendingPromotion = null;
+    boardView.rotateForNextPlayer();
     render(true);
   }
 
@@ -276,14 +278,16 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme)
       chess.reset();
       selectedSquare = null;
       pendingPromotion = null;
+      boardView.resetPlayerView();
       render(true);
       return;
     }
 
     if (target.closest("[data-undo]")) {
-      chess.undo();
+      const undoneMove = chess.undo();
       selectedSquare = null;
       pendingPromotion = null;
+      if (undoneMove) boardView.rotateForNextPlayer();
       render(true);
       return;
     }
@@ -304,14 +308,19 @@ export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme)
 
   const handleThemeChange = (event: Event): void => {
     const theme = (event as CustomEvent<BoardTheme>).detail;
-    if (theme === "classic" || theme === "glass") boardView.setTheme(theme);
+    if (theme === "classic" || theme === "glass" || theme === "marble") boardView.setTheme(theme);
+  };
+  const handleFreeViewSettingChange = (event: Event): void => {
+    boardView.setKeepFreeView((event as CustomEvent<boolean>).detail === true);
   };
   window.addEventListener("chess-board-theme-change", handleThemeChange);
+  window.addEventListener("chess-free-view-setting-change", handleFreeViewSettingChange);
 
   render(true);
 
   return () => {
     window.removeEventListener("chess-board-theme-change", handleThemeChange);
+    window.removeEventListener("chess-free-view-setting-change", handleFreeViewSettingChange);
     boardView.dispose();
     container.replaceChildren();
   };

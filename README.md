@@ -4,14 +4,14 @@ Chess Titan Reborn is a browser chess game that recreates the satisfying, tablet
 
 ## Availability
 
-The game is currently in development and is not ready to play yet. A public web build will be linked here when it is available.
+The project is in development. The current beta supports local two-player chess; computer play is still being developed. A public web build will be linked here when it is available.
 
 ## What to expect
 
-- Play a complete game of standard chess in your browser
-- Challenge a built-in computer opponent
-- Choose between two board looks: **Classic Matte** and **Reborn Glass**
-- Enjoy a tactile 3D board, clear piece movement, and responsive controls
+- Play a local game of standard chess in your browser
+- Choose among three board finishes: **Classic Matte**, **Reborn Glass**, and **Royal Marble**
+- Right-click and drag to rotate the 3D view; the board turns toward the next player after each local move
+- Enjoy clear piece movement and responsive controls, with mouse-wheel zoom disabled
 - Play without an account or a separate game service
 
 ## Browser requirements

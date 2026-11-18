@@ -1,6 +1,6 @@
 import "./styles.css";
 
-type BoardTheme = "classic" | "glass";
+type BoardTheme = "classic" | "glass" | "marble";
 
 const app = document.querySelector<HTMLElement>("#app");
 
@@ -34,9 +34,14 @@ app.innerHTML = `
           <select id="board-theme" data-board-theme>
             <option value="classic">Classic Matte</option>
             <option value="glass">Reborn Glass</option>
+            <option value="marble">Royal Marble</option>
           </select>
         </label>
-        <p class="dialog-note">Your board finish is saved on this device.</p>
+        <label class="toggle-control">
+          <input type="checkbox" data-keep-free-view />
+          <span>Keep the adjusted view after dragging</span>
+        </label>
+        <p class="dialog-note">Board finish and view preference are saved on this device. Right-drag rotates the board; with this off, the view returns to the current player's angle. Mouse-wheel zoom is disabled.</p>
         <button class="primary-action" type="button" data-close-settings>Done</button>
       </div>
     </dialog>
@@ -61,20 +66,26 @@ const viewport = app.querySelector<HTMLElement>("[data-game-viewport]");
 const settingsDialog = app.querySelector<HTMLDialogElement>("[data-settings-dialog]");
 const creditsDialog = app.querySelector<HTMLDialogElement>("[data-credits-dialog]");
 const themeSelect = app.querySelector<HTMLSelectElement>("[data-board-theme]");
+const keepFreeViewInput = app.querySelector<HTMLInputElement>("[data-keep-free-view]");
 
-if (!welcome || !openButton || !status || !viewport || !settingsDialog || !creditsDialog || !themeSelect) {
+if (!welcome || !openButton || !status || !viewport || !settingsDialog || !creditsDialog || !themeSelect || !keepFreeViewInput) {
   throw new Error("The game shell could not be initialized.");
 }
 
 let currentTheme: BoardTheme = "classic";
+let keepFreeView = false;
 let disposeGame: (() => void) | null = null;
 
 try {
-  currentTheme = localStorage.getItem("chess-titan-board-theme") === "glass" ? "glass" : "classic";
+  const savedTheme = localStorage.getItem("chess-titan-board-theme");
+  currentTheme = savedTheme === "glass" || savedTheme === "marble" ? savedTheme : "classic";
+  keepFreeView = localStorage.getItem("chess-titan-keep-free-view") === "true";
 } catch {
   currentTheme = "classic";
+  keepFreeView = false;
 }
 themeSelect.value = currentTheme;
+keepFreeViewInput.checked = keepFreeView;
 
 const saveTheme = (theme: BoardTheme): void => {
   currentTheme = theme;
@@ -87,7 +98,18 @@ const saveTheme = (theme: BoardTheme): void => {
 };
 
 themeSelect.addEventListener("change", () => {
-  saveTheme(themeSelect.value === "glass" ? "glass" : "classic");
+  const selectedTheme = themeSelect.value;
+  saveTheme(selectedTheme === "glass" || selectedTheme === "marble" ? selectedTheme : "classic");
+});
+
+keepFreeViewInput.addEventListener("change", () => {
+  keepFreeView = keepFreeViewInput.checked;
+  try {
+    localStorage.setItem("chess-titan-keep-free-view", String(keepFreeView));
+  } catch {
+    // Keep the preference for the current session if storage is unavailable.
+  }
+  window.dispatchEvent(new CustomEvent<boolean>("chess-free-view-setting-change", { detail: keepFreeView }));
 });
 
 app.addEventListener("click", (event) => {
@@ -119,7 +141,7 @@ openButton.addEventListener("click", async () => {
 
   try {
     const { mountChessGame } = await import("./game/chess-game");
-    disposeGame = mountChessGame(viewport, currentTheme);
+    disposeGame = mountChessGame(viewport, currentTheme, keepFreeView);
     welcome.hidden = true;
     viewport.hidden = false;
     status.textContent = "";

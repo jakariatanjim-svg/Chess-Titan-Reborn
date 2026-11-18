@@ -57,55 +57,48 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
   let resetting = false;
   let disposed = false;
 
-  const playerLabel = options.playerColor === "w" ? "White" : "Black";
-  const computerLabel = options.playerColor === "w" ? "Black" : "White";
-
   container.innerHTML = `
     <section class="game-screen" aria-labelledby="game-heading">
       <header class="game-header">
-        <div>
-          <p class="eyebrow">Chess Titan Reborn</p>
-          <h1 id="game-heading">${options.mode === "computer" ? "Play vs computer" : "Local game"}</h1>
+        <div class="game-status-block">
+          <h1 id="game-heading">Chess Titans</h1>
+          <p class="turn-status" data-turn-status aria-live="polite"></p>
+          <p class="engine-status" data-engine-status aria-live="polite" hidden></p>
         </div>
-        <div class="game-actions">
-          <button class="secondary-action" type="button" data-back-to-menu>Main menu</button>
-          <button class="secondary-action" type="button" data-open-settings>Settings</button>
-          <button class="secondary-action" type="button" data-undo>${options.mode === "computer" ? "Undo turn" : "Undo move"}</button>
-          <button class="primary-action" type="button" data-new-game>New game</button>
-        </div>
+        <nav class="classic-menus" aria-label="Game menus">
+          <details class="game-menu">
+            <summary>Game</summary>
+            <div class="game-menu-popover" aria-label="Game actions">
+              <button class="game-menu-item" type="button" data-new-game>New game</button>
+              <button class="game-menu-item" type="button" data-undo>${options.mode === "computer" ? "Undo turn" : "Undo move"}</button>
+              <button class="game-menu-item" type="button" data-open-settings>Settings</button>
+              <button class="game-menu-item" type="button" data-back-to-menu>Main menu</button>
+            </div>
+          </details>
+          <details class="game-menu">
+            <summary>Help</summary>
+            <div class="game-menu-popover game-help-popover">
+              <p>Click one of your pieces, then choose a highlighted square.</p>
+              <p>The last move is marked in blue; a checked king's square is red.</p>
+              <p>Right-click and drag to adjust the view. Mouse-wheel zoom is disabled.</p>
+              <details class="keyboard-board">
+                <summary>Keyboard board</summary>
+                <div class="accessible-chessboard" data-board-controls role="group" aria-label="Chessboard square controls"></div>
+              </details>
+            </div>
+          </details>
+        </nav>
       </header>
       <div class="game-layout">
         <section class="board-column" aria-label="Chessboard">
-          <div class="chessboard-3d" data-chessboard aria-label="Interactive 3D chessboard. Right-click and drag to rotate the view. Mouse-wheel zoom is disabled."></div>
-          <details class="keyboard-board">
-            <summary>Keyboard and screen-reader board controls</summary>
-            <div class="accessible-chessboard" data-board-controls role="group" aria-label="Chessboard square controls"></div>
-          </details>
-          <p class="interaction-hint" data-interaction-hint aria-live="polite">Select a piece and a highlighted square to move. Right-click and drag to rotate the view.</p>
-        </section>
-        <aside class="game-sidebar">
-          <section class="status-card" aria-labelledby="status-heading">
-            <p class="eyebrow" id="status-heading">Game status</p>
-            <p class="turn-status" data-turn-status aria-live="polite"></p>
-            <p class="engine-status" data-engine-status aria-live="polite" hidden></p>
-          </section>
+          <div class="chessboard-3d" data-chessboard aria-label="Interactive 3D chessboard shown straight from the current player's side with a downward tilt. Left-click pieces and squares to move; right-click and drag to adjust the view. Mouse-wheel zoom is disabled."></div>
+          <p class="interaction-hint visually-hidden" data-interaction-hint aria-live="polite">Select a piece and a highlighted square to move. Right-drag rotates the view; mouse-wheel zoom is disabled.</p>
           <section class="promotion-card" data-promotion-card hidden aria-labelledby="promotion-heading">
             <p class="eyebrow" id="promotion-heading">Choose promotion</p>
             <div class="promotion-options" data-promotion-options></div>
           </section>
-          <section class="moves-card" aria-labelledby="moves-heading">
-            <div class="moves-heading">
-              <p class="eyebrow" id="moves-heading">Move history</p>
-              <span data-move-count>0 moves</span>
-            </div>
-            <ol class="move-list" data-move-list></ol>
-          </section>
-          <p class="local-game-note">${options.mode === "computer"
-            ? `You are ${playerLabel}; Stockfish plays ${computerLabel}. The engine runs on this device.`
-            : "Pass-and-play on this device. The view turns toward the next player after each move."}</p>
-        </aside>
+        </section>
       </div>
-      <footer class="site-credit">© 2026 jakariatanjim-svg</footer>
     </section>
   `;
 
@@ -115,8 +108,6 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
   const turnStatus = requireElement(container.querySelector<HTMLElement>("[data-turn-status]"), "turn status");
   const engineStatus = requireElement(container.querySelector<HTMLElement>("[data-engine-status]"), "engine status");
   const interactionHint = requireElement(container.querySelector<HTMLElement>("[data-interaction-hint]"), "interaction hint");
-  const moveList = requireElement(container.querySelector<HTMLOListElement>("[data-move-list]"), "move list");
-  const moveCount = requireElement(container.querySelector<HTMLElement>("[data-move-count]"), "move count");
   const undoButton = requireElement(container.querySelector<HTMLButtonElement>("[data-undo]"), "undo button");
   const newGameButton = requireElement(container.querySelector<HTMLButtonElement>("[data-new-game]"), "new game button");
   const promotionCard = requireElement(container.querySelector<HTMLElement>("[data-promotion-card]"), "promotion panel");
@@ -193,6 +184,21 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
     return pieces;
   }
 
+  function getCheckedKingSquare(): Square | null {
+    if (!chess.isCheck()) return null;
+    const position = chess.board();
+
+    for (let row = 0; row < ranks.length; row += 1) {
+      for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+        const piece = position[row][fileIndex];
+        if (piece?.type === "k" && piece.color === chess.turn()) {
+          return `${files[fileIndex]}${ranks[row]}` as Square;
+        }
+      }
+    }
+    return null;
+  }
+
   function canUndo(): boolean {
     const history = chess.history({ verbose: true });
     if (!history.length || resetting || engineThinking) return false;
@@ -214,36 +220,6 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
       button.textContent = piece ? `${pieceGlyphs[`${piece.color}${piece.type}`]} ${square}` : square;
       button.disabled = chess.isGameOver() || pendingPromotion !== null || inputLocked;
     }
-  }
-
-  function renderMoveHistory(): void {
-    const history = chess.history({ verbose: true });
-    moveList.replaceChildren();
-    moveCount.textContent = `${history.length} ${history.length === 1 ? "move" : "moves"}`;
-
-    for (let index = 0; index < history.length; index += 2) {
-      const row = document.createElement("li");
-      row.className = "move-row";
-
-      const number = document.createElement("span");
-      number.className = "move-number";
-      number.textContent = `${Math.floor(index / 2) + 1}.`;
-      row.append(number);
-
-      const whiteMove = document.createElement("span");
-      whiteMove.textContent = history[index].san;
-      row.append(whiteMove);
-
-      const blackMove = history[index + 1];
-      if (blackMove) {
-        const blackMoveLabel = document.createElement("span");
-        blackMoveLabel.textContent = blackMove.san;
-        row.append(blackMoveLabel);
-      }
-
-      moveList.append(row);
-    }
-    moveList.scrollTop = moveList.scrollHeight;
   }
 
   function renderPromotionOptions(): void {
@@ -273,7 +249,7 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
       : selectedSquare
         ? `Selected ${selectedSquare}. Choose a highlighted square or another piece.`
         : "Select one of your pieces, then choose a highlighted square.";
-    interactionHint.textContent = `${moveHint} Right-drag rotates the view; mouse-wheel zoom is disabled.`;
+    interactionHint.textContent = `${moveHint} Previous move squares are blue; a checked king's square is red. Right-drag rotates the view; mouse-wheel zoom is disabled.`;
 
     if (options.mode === "computer") {
       engineStatus.hidden = false;
@@ -295,9 +271,9 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
       selectedSquare,
       legalMoves.map((move) => ({ square: move.to, capture: move.isCapture() })),
       chess.history({ verbose: true }).at(-1) ?? null,
+      getCheckedKingSquare(),
     );
     renderAccessibleBoard();
-    renderMoveHistory();
     renderPromotionOptions();
   }
 
@@ -470,6 +446,10 @@ export function mountChessGame(container: HTMLElement, options: ChessGameOptions
   gameScreen.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) return;
+
+    if (target.closest("[data-new-game], [data-undo], [data-open-settings], [data-back-to-menu]")) {
+      target.closest<HTMLDetailsElement>("details.game-menu")?.removeAttribute("open");
+    }
 
     if (target.closest("[data-new-game]")) {
       void resetGame();

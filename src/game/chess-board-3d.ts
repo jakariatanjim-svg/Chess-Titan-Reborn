@@ -48,7 +48,8 @@ export class ChessBoard3D {
   private readonly resizeObserver: ResizeObserver;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointer = new THREE.Vector2();
-  private readonly initialCameraPosition = new THREE.Vector3(7.2, 9.1, 10.4);
+  // Center the camera directly on the active player's file axis; only the elevation is angled.
+  private readonly initialCameraPosition = new THREE.Vector3(0, 11.65, 9.75);
   private readonly defaultCameraPosition = new THREE.Vector3();
   private readonly boardRoot = new THREE.Group();
   private readonly pieceRoot = new THREE.Group();
@@ -66,6 +67,7 @@ export class ChessBoard3D {
   private selectedSquare: Square | null = null;
   private highlightedMoves: HighlightedMove[] = [];
   private lastMove: { from: Square; to: Square } | null = null;
+  private checkedKingSquare: Square | null = null;
   private pointerStart: THREE.Vector2 | null = null;
   private freeViewPointerStart: THREE.Vector2 | null = null;
   private keepFreeView: boolean;
@@ -216,30 +218,32 @@ export class ChessBoard3D {
     selectedSquare: Square | null,
     moves: HighlightedMove[],
     lastMove: { from: Square; to: Square } | null,
+    checkedKingSquare: Square | null,
   ): void {
     this.selectedSquare = selectedSquare;
     this.highlightedMoves = moves.map((move) => ({ ...move }));
     this.lastMove = lastMove ? { ...lastMove } : null;
+    this.checkedKingSquare = checkedKingSquare;
     this.clearGroup(this.highlightRoot);
 
     const accent = this.activeTheme === "glass" ? "#f2d78e" : this.activeTheme === "marble" ? "#ead08f" : "#d7aa55";
-    const lastMoveColor = this.activeTheme === "glass" ? "#89c9c6" : this.activeTheme === "marble" ? "#82b39c" : "#bf9653";
 
     if (this.lastMove) {
-      this.addSquareTint(this.lastMove.from, lastMoveColor, 0.2);
-      this.addSquareTint(this.lastMove.to, lastMoveColor, 0.2);
+      const moveBlue = "#268cff";
+      this.addSquareTint(this.lastMove.from, moveBlue, 0.37);
+      this.addSquareTint(this.lastMove.to, moveBlue, 0.37);
+      this.addSquareOutline(this.lastMove.from, "#5aa8ff", 0.032);
+      this.addSquareOutline(this.lastMove.to, "#5aa8ff", 0.032);
+    }
+
+    if (checkedKingSquare) {
+      this.addSquareTint(checkedKingSquare, "#ed273b", 0.56);
+      this.addSquareOutline(checkedKingSquare, "#ff4053", 0.055);
     }
 
     if (selectedSquare) {
-      this.addSquareTint(selectedSquare, accent, 0.34);
-      const selectedPosition = squareCoordinates(selectedSquare);
-      const border = new THREE.Mesh(
-        new THREE.BoxGeometry(0.91, 0.018, 0.91),
-        new THREE.MeshBasicMaterial({ color: accent, toneMapped: false }),
-      );
-      border.position.set(selectedPosition.x, 0.277, selectedPosition.z);
-      border.renderOrder = 2;
-      this.highlightRoot.add(border);
+      this.addSquareTint(selectedSquare, accent, 0.3);
+      this.addSquareOutline(selectedSquare, accent, 0.032);
     }
 
     for (const move of this.highlightedMoves) {
@@ -294,7 +298,7 @@ export class ChessBoard3D {
     previousDark.dispose();
 
     this.setPosition(this.pieces);
-    this.setHighlights(this.selectedSquare, this.highlightedMoves, this.lastMove);
+    this.setHighlights(this.selectedSquare, this.highlightedMoves, this.lastMove, this.checkedKingSquare);
   }
 
   dispose(): void {
@@ -701,9 +705,29 @@ export class ChessBoard3D {
       }),
     );
     tint.rotation.x = -Math.PI / 2;
-    tint.position.set(position.x, 0.268, position.z);
+    tint.position.set(position.x, 0.269, position.z);
     tint.renderOrder = 1;
     this.highlightRoot.add(tint);
+  }
+
+  private addSquareOutline(square: Square, color: string, thickness: number): void {
+    const { x, z } = squareCoordinates(square);
+    const material = new THREE.MeshBasicMaterial({ color, toneMapped: false });
+    const halfSize = 0.49;
+    const y = 0.281;
+    const bars = [
+      { geometry: new THREE.BoxGeometry(0.98, 0.018, thickness), position: [x, y, z - halfSize + thickness / 2] as const },
+      { geometry: new THREE.BoxGeometry(0.98, 0.018, thickness), position: [x, y, z + halfSize - thickness / 2] as const },
+      { geometry: new THREE.BoxGeometry(thickness, 0.018, 0.98), position: [x - halfSize + thickness / 2, y, z] as const },
+      { geometry: new THREE.BoxGeometry(thickness, 0.018, 0.98), position: [x + halfSize - thickness / 2, y, z] as const },
+    ];
+
+    for (const bar of bars) {
+      const mesh = new THREE.Mesh(bar.geometry, material);
+      mesh.position.set(...bar.position);
+      mesh.renderOrder = 2;
+      this.highlightRoot.add(mesh);
+    }
   }
 
   private clearGroup(group: THREE.Group): void {

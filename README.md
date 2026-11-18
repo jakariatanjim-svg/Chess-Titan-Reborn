@@ -1,6 +1,6 @@
-# Chess Titans Remastered
+# Chess Titan Reborn
 
-Chess Titans Remastered is a browser chess game that recreates the satisfying, tabletop feeling of classic desktop chess with a fresh presentation for the web.
+Chess Titan Reborn is a browser chess game that recreates the satisfying, tabletop feeling of classic desktop chess with a fresh presentation for the web.
 
 ## Availability
 
@@ -20,7 +20,7 @@ Use a current version of Chrome, Edge, Firefox, Safari, or another modern browse
 
 ## Privacy
 
-Chess Titans Remastered is designed to run in your browser. It does not require an account or a hosted game server. Any game preferences or saved game data will stay on your device.
+Chess Titan Reborn is designed to run in your browser. It does not require an account or a hosted game server. Any game preferences or saved game data will stay on your device.
 
 ## License and credits
 

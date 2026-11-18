@@ -9,10 +9,11 @@ The project is in development, but the current beta is playable: it supports loc
 ## What to expect
 
 - Play standard chess locally or challenge Stockfish 19 Lite, running in your browser with no game server
-- Play with original procedural 3D chess pieces; the previous move is marked in blue and a checked king's square in red
+- Use the original **Titan Signature** design by default: polished ivory and graphite pieces with fine gold accents, paired with a veined marble board and gold-inlaid frame
+- Play with procedural 3D pieces; the previous move is marked in blue and a checked king's square in red
 - Keep captured pieces visible in small 3D side trays, grouped by piece color and swapping screen sides with the player-facing view
 - See the board straight from the current player's side, with a downward camera tilt instead of a diagonal side view
-- Choose among three board finishes: **Classic Matte**, **Reborn Glass**, and **Royal Marble**
+- Choose among four board finishes: **Titan Signature**, **Classic Matte**, **Reborn Glass**, and **Royal Marble**
 - Right-click and drag to adjust the 3D view; in local play, the board turns toward the next player after each move
 - Use the compact classic-style **Game** and **Help** menus; set your side and computer strength in saved settings, with mouse-wheel zoom disabled
 

@@ -1,10 +1,14 @@
 import "./styles.css";
 
-type BoardTheme = "classic" | "glass" | "marble";
+type BoardTheme = "titan" | "classic" | "glass" | "marble";
 
 function requireElement<T extends Element>(element: T | null, description: string): T {
   if (!element) throw new Error(`The ${description} is missing.`);
   return element;
+}
+
+function isBoardTheme(theme: string | null): theme is BoardTheme {
+  return theme === "titan" || theme === "classic" || theme === "glass" || theme === "marble";
 }
 
 const app = requireElement(document.querySelector<HTMLElement>("#app"), "application root");
@@ -35,6 +39,7 @@ app.innerHTML = `
         <label class="setting-control" for="board-theme">
           Board finish
           <select id="board-theme" data-board-theme>
+            <option value="titan">Titan Signature · Default</option>
             <option value="classic">Classic Matte</option>
             <option value="glass">Reborn Glass</option>
             <option value="marble">Royal Marble</option>
@@ -93,7 +98,7 @@ const keepFreeViewInput = requireElement(app.querySelector<HTMLInputElement>("[d
 type GameMode = "local" | "computer";
 type PlayerColor = "w" | "b";
 
-let currentTheme: BoardTheme = "classic";
+let currentTheme: BoardTheme = "titan";
 let keepFreeView = false;
 let playerColor: PlayerColor = "w";
 let engineDepth = 9;
@@ -103,12 +108,12 @@ try {
   const savedTheme = localStorage.getItem("chess-titan-board-theme");
   const savedColor = localStorage.getItem("chess-titan-player-color");
   const savedDepth = localStorage.getItem("chess-titan-engine-depth");
-  currentTheme = savedTheme === "glass" || savedTheme === "marble" ? savedTheme : "classic";
+  currentTheme = savedTheme === "glass" || savedTheme === "marble" ? savedTheme : "titan";
   keepFreeView = localStorage.getItem("chess-titan-keep-free-view") === "true";
   playerColor = savedColor === "b" ? "b" : "w";
   engineDepth = [5, 9, 13].includes(Number(savedDepth)) ? Number(savedDepth) : 9;
 } catch {
-  currentTheme = "classic";
+  currentTheme = "titan";
   keepFreeView = false;
   playerColor = "w";
   engineDepth = 9;
@@ -129,8 +134,7 @@ const saveTheme = (theme: BoardTheme): void => {
 };
 
 themeSelect.addEventListener("change", () => {
-  const selectedTheme = themeSelect.value;
-  saveTheme(selectedTheme === "glass" || selectedTheme === "marble" ? selectedTheme : "classic");
+  saveTheme(isBoardTheme(themeSelect.value) ? themeSelect.value : "titan");
 });
 
 playerColorSelect.addEventListener("change", () => {

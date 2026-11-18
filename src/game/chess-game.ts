@@ -1,4 +1,5 @@
 import { Chess, type Square } from "chess.js";
+import { ChessBoard3D, type BoardTheme, type RenderPiece } from "./chess-board-3d";
 
 type PromotionPiece = "q" | "r" | "b" | "n";
 
@@ -28,27 +29,33 @@ const pieceGlyphs: Record<string, string> = {
   bk: "♚",
 };
 
-export function mountChessGame(container: HTMLElement): void {
+export function mountChessGame(container: HTMLElement, initialTheme: BoardTheme): () => void {
   const chess = new Chess();
   let selectedSquare: Square | null = null;
   let pendingPromotion: { from: Square; to: Square } | null = null;
 
   container.innerHTML = `
-    <main class="game-screen">
+    <section class="game-screen" aria-labelledby="game-heading">
       <header class="game-header">
         <div>
           <p class="eyebrow">Chess Titan Reborn</p>
-          <h1>Play chess</h1>
+          <h1 id="game-heading">Local game</h1>
         </div>
         <div class="game-actions">
+          <button class="secondary-action" type="button" data-back-to-menu>Main menu</button>
+          <button class="secondary-action" type="button" data-open-settings>Settings</button>
           <button class="secondary-action" type="button" data-undo>Undo move</button>
           <button class="primary-action" type="button" data-new-game>New game</button>
         </div>
       </header>
       <div class="game-layout">
         <section class="board-column" aria-label="Chessboard">
-          <div class="chessboard" data-chessboard aria-label="Chessboard squares"></div>
-          <p class="interaction-hint" data-interaction-hint aria-live="polite">Select a piece, then choose a highlighted square.</p>
+          <div class="chessboard-3d" data-chessboard aria-label="Interactive 3D chessboard. Drag to rotate the view and select a square to move."></div>
+          <details class="keyboard-board">
+            <summary>Keyboard and screen-reader board controls</summary>
+            <div class="accessible-chessboard" data-board-controls role="group" aria-label="Chessboard square controls"></div>
+          </details>
+          <p class="interaction-hint" data-interaction-hint aria-live="polite">Select one of your pieces, then choose a highlighted square.</p>
         </section>
         <aside class="game-sidebar">
           <section class="status-card" aria-labelledby="status-heading">
@@ -70,10 +77,12 @@ export function mountChessGame(container: HTMLElement): void {
         </aside>
       </div>
       <footer class="site-credit">© 2026 jakariatanjim-svg</footer>
-    </main>
+    </section>
   `;
 
+  const gameScreen = container.querySelector<HTMLElement>(".game-screen");
   const boardElement = container.querySelector<HTMLElement>("[data-chessboard]");
+  const boardControls = container.querySelector<HTMLElement>("[data-board-controls]");
   const turnStatus = container.querySelector<HTMLElement>("[data-turn-status]");
   const interactionHint = container.querySelector<HTMLElement>("[data-interaction-hint]");
   const moveList = container.querySelector<HTMLOListElement>("[data-move-list]");
@@ -83,7 +92,9 @@ export function mountChessGame(container: HTMLElement): void {
   const promotionOptions = container.querySelector<HTMLElement>("[data-promotion-options]");
 
   if (
+    !gameScreen ||
     !boardElement ||
+    !boardControls ||
     !turnStatus ||
     !interactionHint ||
     !moveList ||
@@ -95,9 +106,25 @@ export function mountChessGame(container: HTMLElement): void {
     throw new Error("The chess game interface could not be initialized.");
   }
 
+  const squareButtons = new Map<Square, HTMLButtonElement>();
+  for (const rank of ranks) {
+    for (const file of files) {
+      const square = `${file}${rank}` as Square;
+      const button = document.createElement("button");
+      button.className = "accessible-square";
+      button.type = "button";
+      button.dataset.square = square;
+      button.textContent = square;
+      squareButtons.set(square, button);
+      boardControls.append(button);
+    }
+  }
+
+  const boardView = new ChessBoard3D(boardElement, handleSquareClick, initialTheme);
+
   const colorName = (color: "w" | "b"): string => (color === "w" ? "White" : "Black");
 
-  const describeGameState = (): string => {
+  function describeGameState(): string {
     if (chess.isCheckmate()) {
       return `Checkmate — ${colorName(chess.turn() === "w" ? "b" : "w")} wins.`;
     }
@@ -108,9 +135,40 @@ export function mountChessGame(container: HTMLElement): void {
 
     const turn = `${colorName(chess.turn())} to move`;
     return chess.isCheck() ? `${turn} — check.` : `${turn}.`;
-  };
+  }
 
-  const renderMoveHistory = (): void => {
+  function boardPieces(): RenderPiece[] {
+    const position = chess.board();
+    const pieces: RenderPiece[] = [];
+
+    for (let row = 0; row < ranks.length; row += 1) {
+      for (let fileIndex = 0; fileIndex < files.length; fileIndex += 1) {
+        const piece = position[row][fileIndex];
+        if (!piece) continue;
+        pieces.push({
+          square: `${files[fileIndex]}${ranks[row]}` as Square,
+          type: piece.type,
+          color: piece.color,
+        });
+      }
+    }
+    return pieces;
+  }
+
+  function renderAccessibleBoard(): void {
+    for (const [square, button] of squareButtons) {
+      const piece = chess.get(square);
+      const label = piece
+        ? `${square}, ${colorName(piece.color)} ${pieceNames[piece.type]}`
+        : `${square}, empty`;
+      button.setAttribute("aria-label", label);
+      button.setAttribute("aria-pressed", String(selectedSquare === square));
+      button.textContent = piece ? `${pieceGlyphs[`${piece.color}${piece.type}`]} ${square}` : square;
+      button.disabled = chess.isGameOver() || pendingPromotion !== null;
+    }
+  }
+
+  function renderMoveHistory(): void {
     const history = chess.history({ verbose: true });
     moveList.replaceChildren();
     moveCount.textContent = `${history.length} ${history.length === 1 ? "move" : "moves"}`;
@@ -138,9 +196,9 @@ export function mountChessGame(container: HTMLElement): void {
       moveList.append(row);
     }
     moveList.scrollTop = moveList.scrollHeight;
-  };
+  }
 
-  const renderPromotionOptions = (): void => {
+  function renderPromotionOptions(): void {
     promotionCard.hidden = pendingPromotion === null;
     promotionOptions.replaceChildren();
 
@@ -155,92 +213,39 @@ export function mountChessGame(container: HTMLElement): void {
       button.textContent = pieceGlyphs[`${chess.turn()}${type}`];
       promotionOptions.append(button);
     }
-  };
+  }
 
-  const renderBoard = (): void => {
-    const board = chess.board();
-    const lastMove = chess.history({ verbose: true }).at(-1);
-    const legalMoves = selectedSquare
-      ? chess.moves({ square: selectedSquare, verbose: true })
-      : [];
-    const legalDestinations = new Map(legalMoves.map((move) => [move.to, move] as const));
-
-    boardElement.replaceChildren();
-    boardElement.setAttribute("aria-label", `Chessboard. ${describeGameState()}`);
-
-    ranks.forEach((rank, rowIndex) => {
-      files.forEach((file, fileIndex) => {
-        const square = `${file}${rank}` as Square;
-        const piece = board[rowIndex][fileIndex];
-        const button = document.createElement("button");
-        const destinationMove = legalDestinations.get(square);
-        const isDark = (rank + fileIndex) % 2 === 0;
-        button.className = `square ${isDark ? "square-dark" : "square-light"}`;
-        button.type = "button";
-        button.dataset.square = square;
-        button.setAttribute("aria-pressed", String(selectedSquare === square));
-        button.setAttribute(
-          "aria-label",
-          `${square}, ${piece ? `${colorName(piece.color)} ${pieceNames[piece.type]}` : "empty"}${selectedSquare === square ? ", selected" : ""}`,
-        );
-
-        if (selectedSquare === square) button.classList.add("is-selected");
-        if (lastMove && (lastMove.from === square || lastMove.to === square)) {
-          button.classList.add("is-last-move");
-        }
-        if (destinationMove) {
-          button.classList.add("is-legal-destination");
-          if (destinationMove.isCapture()) button.classList.add("is-capture");
-        }
-        if (piece) {
-          const glyph = document.createElement("span");
-          glyph.className = `piece piece-${piece.color === "w" ? "white" : "black"}`;
-          glyph.setAttribute("aria-hidden", "true");
-          glyph.textContent = pieceGlyphs[`${piece.color}${piece.type}`];
-          button.append(glyph);
-        }
-
-        if (fileIndex === 0 || rank === 1) {
-          const coordinate = document.createElement("span");
-          coordinate.className = `square-coordinate ${fileIndex === 0 ? "rank-coordinate" : "file-coordinate"}`;
-          coordinate.setAttribute("aria-hidden", "true");
-          coordinate.textContent = fileIndex === 0 ? String(rank) : file;
-          button.append(coordinate);
-        }
-
-        boardElement.append(button);
-      });
-    });
-  };
-
-  const render = (): void => {
+  function render(positionChanged = false): void {
     turnStatus.textContent = describeGameState();
     undoButton.disabled = chess.history().length === 0;
     interactionHint.textContent = pendingPromotion
       ? "Choose the piece for your pawn promotion."
       : selectedSquare
         ? `Selected ${selectedSquare}. Choose a highlighted square or another piece.`
-        : "Select a piece, then choose a highlighted square.";
-    renderBoard();
+        : "Select one of your pieces, then choose a highlighted square.";
+
+    if (positionChanged) boardView.setPosition(boardPieces());
+    const legalMoves = selectedSquare
+      ? chess.moves({ square: selectedSquare, verbose: true })
+      : [];
+    boardView.setHighlights(
+      selectedSquare,
+      legalMoves.map((move) => ({ square: move.to, capture: move.isCapture() })),
+      chess.history({ verbose: true }).at(-1) ?? null,
+    );
+    renderAccessibleBoard();
     renderMoveHistory();
     renderPromotionOptions();
-  };
+  }
 
-  const commitMove = (from: Square, to: Square, promotion?: PromotionPiece): void => {
+  function commitMove(from: Square, to: Square, promotion?: PromotionPiece): void {
     chess.move({ from, to, ...(promotion ? { promotion } : {}) });
     selectedSquare = null;
     pendingPromotion = null;
-    render();
-  };
+    render(true);
+  }
 
-  boardElement.addEventListener("click", (event) => {
-    const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
-    const squareButton = target.closest<HTMLButtonElement>("button[data-square]");
-    const squareValue = squareButton?.dataset.square;
-    if (!squareValue) return;
-
-    const square = squareValue as Square;
+  function handleSquareClick(square: Square): void {
     if (chess.isGameOver() || pendingPromotion) return;
 
     if (selectedSquare) {
@@ -261,17 +266,17 @@ export function mountChessGame(container: HTMLElement): void {
     const piece = chess.get(square);
     selectedSquare = piece?.color === chess.turn() ? square : null;
     render();
-  });
+  }
 
-  container.addEventListener("click", (event) => {
+  gameScreen.addEventListener("click", (event) => {
     const target = event.target;
-    if (!(target instanceof HTMLElement)) return;
+    if (!(target instanceof Element)) return;
 
     if (target.closest("[data-new-game]")) {
       chess.reset();
       selectedSquare = null;
       pendingPromotion = null;
-      render();
+      render(true);
       return;
     }
 
@@ -279,7 +284,14 @@ export function mountChessGame(container: HTMLElement): void {
       chess.undo();
       selectedSquare = null;
       pendingPromotion = null;
-      render();
+      render(true);
+      return;
+    }
+
+    const accessibleSquare = target.closest<HTMLButtonElement>("button[data-square]");
+    const square = accessibleSquare?.dataset.square;
+    if (square) {
+      handleSquareClick(square as Square);
       return;
     }
 
@@ -290,5 +302,17 @@ export function mountChessGame(container: HTMLElement): void {
     }
   });
 
-  render();
+  const handleThemeChange = (event: Event): void => {
+    const theme = (event as CustomEvent<BoardTheme>).detail;
+    if (theme === "classic" || theme === "glass") boardView.setTheme(theme);
+  };
+  window.addEventListener("chess-board-theme-change", handleThemeChange);
+
+  render(true);
+
+  return () => {
+    window.removeEventListener("chess-board-theme-change", handleThemeChange);
+    boardView.dispose();
+    container.replaceChildren();
+  };
 }

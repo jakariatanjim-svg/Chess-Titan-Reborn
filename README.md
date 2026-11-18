@@ -4,15 +4,16 @@ Chess Titan Reborn is a browser chess game that recreates the satisfying, tablet
 
 ## Availability
 
-The project is in development. The current beta supports local two-player chess; computer play is still being developed. A public web build will be linked here when it is available.
+The project is in development, but the current beta is playable: it supports local pass-and-play and games against the bundled Stockfish engine. A public web build will be linked here when it is available.
 
 ## What to expect
 
-- Play a local game of standard chess in your browser
+- Play standard chess locally or challenge Stockfish 19 Lite, running in your browser with no game server
+- Play with original, procedural 3D chess pieces and clear legal-move highlights
 - Choose among three board finishes: **Classic Matte**, **Reborn Glass**, and **Royal Marble**
-- Right-click and drag to rotate the 3D view; the board turns toward the next player after each local move
-- Enjoy clear piece movement and responsive controls, with mouse-wheel zoom disabled
-- Play without an account or a separate game service
+- Right-click and drag to rotate the 3D view; in local play, the view turns toward the next player after each move
+- Set your side and computer strength; board and view preferences are saved on this device
+- Use responsive controls with mouse-wheel zoom disabled
 
 ## Browser requirements
 
